@@ -1,0 +1,263 @@
+<style>
+.colorsquare {  
+  border-style: solid;
+  border-width: 1px;
+  border-color: grey;
+  padding: 10px 10px;
+  margin: 1px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+}
+.square {
+  #background-color: white !important;
+  
+  background-image: /* tint image */
+                      linear-gradient(to right, rgba(192, 192, 192, 0.75), rgba(192, 192, 192, 0.75)),
+                      /* checkered effect */
+                      linear-gradient(to right, black 50%, white 50%),
+                      linear-gradient(to bottom, black 50%, white 50%);
+    background-blend-mode: normal, difference, normal;
+    background-size: 2em 2em;
+	
+	#box-shadow:inset 30px 0 0 0 rgba(255, 0, 0, 1);
+  
+  border-style: solid;
+  border-width: 1px;
+  border-color: grey;
+  #color: white;
+  padding: 15px 15px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 16px;
+}
+canvas {  
+  width: 30px;
+  height: 20px;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: -webkit-crisp-edges;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+</style>
+<script src="vanilla-picker.min.js"></script>
+<div id="drawingboard" style="width: 1000px;"></div>
+<a id="download" download="image.png"><button type="button" onClick="download()">Download</button></a>
+<canvas id="canvas" width="30" height="20" style="width: 300px; height: 200px;border:1px solid #000000;" ></canvas>
+<div id="picker"></div>
+<div id="previouscolors" style="width: 242px;"></div>
+<button type="button" onClick="trasnparencyToggle()">Transparency bg</button>
+<p id="debug"></p>
+<!-- Script-->
+<script>
+document.onkeydown = KeyPress;
+
+var selectedColor = "#000000";
+var colorlistsize = 20;
+var colorlist = [colorlistsize];
+var transparency = true;
+var isClicking = false;
+var isErasing = false;
+var undoCanvas = [];
+var previouscolors = document.getElementById("previouscolors");
+var drawingboard = document.getElementById("drawingboard");
+drawingboard.addEventListener('contextmenu', event => event.preventDefault());
+var horizontal = 30;
+var vertical = 20;
+
+drawingboard.style = "width: " + 32*horizontal + "px;";
+
+var list = new Array(vertical); 
+for (var i = 0; i < list.length; i++) { 
+    list[i] = new Array(horizontal); 
+} 
+
+/////////////////////////////
+
+var picker = new Picker({
+    parent: document.querySelector('#picker'),
+	popup: false, // 'right'(default), 'left', 'top', 'bottom'
+	alpha: true, // default: true
+	color: '#4caf50',
+	editor: true,
+	layout: 'default',
+	editorFormat: 'hex', // or 'rgb', 'hsl'
+	cancelButton: false,
+	onChange: function(color){selectedColor = color;}
+});
+
+
+/////////////////////////////
+
+var canvas = document.getElementById("canvas");
+var ctx = canvas.getContext("2d");
+//ctx.imageSmoothingEnabled = false;
+//ctx.mozImageSmoothingEnabled = false;
+//ctx.webkitImageSmoothingEnabled = false;
+//ctx.msImageSmoothingEnabled = false;
+//ctx.imageSmoothingEnabled = false;
+//ctx.fillStyle = "#4CAF50";
+//ctx.fillRect(0, 0, 0+1, 0+1);
+//ctx.fillRect(2, 0, 0+1, 0+1);
+//ctx.fillRect(8, 5, 1, 5);
+
+
+function download(){
+	refreshCanvas()
+	
+    var download = document.getElementById("download");
+    var image = document.getElementById("canvas").toDataURL("image/png").replace("image/png", "image/octet-stream");
+    download.setAttribute("href", image);
+}
+	
+	
+function KeyPress(e) {
+	
+      var eventobj = window.event? event : e
+      if (eventobj.keyCode == 90 && eventobj.ctrlKey){
+		if(undoCanvas.length > 0){
+			document.getElementById("debug").innerHTML = undoCanvas;/////
+			old = JSON.parse(JSON.stringify(list));
+			list = JSON.parse(JSON.stringify(undoCanvas.shift()));
+			
+			compareCanvas(old, list)
+			refreshCanvas();
+			
+		}
+	  }
+}
+//////////////////////////////////////////
+
+
+for (var i = 0; i < colorlistsize; i++) {
+	var btn = document.createElement("BUTTON");
+	btn.className = "colorsquare";
+	btn.id = "colorsquare" + i;
+	btn.addEventListener("click", function(){picker.setColor(this.style.backgroundColor);}, false);
+	previouscolors.appendChild(btn);
+} 
+
+
+/////
+  
+
+
+for (var i = 0; i < vertical; i++) {
+  for (var j = 0; j < horizontal; j++) {
+		//Add to list
+		list[i][j] = 0;
+		//Draw on screen
+		var btn = document.createElement("BUTTON");
+		btn.className = "square";
+		btn.id = i + ":" + j;
+		btn.addEventListener("mousedown", function(event){if(event.button == 0){draw(this.id);isClicking = true;}else if(event.button == 2){erase(this.id);isErasing = true;}}, false);
+		btn.addEventListener("mouseup", function(){isClicking = false;isErasing = false;}, false);
+		btn.addEventListener("mouseover", function(){document.getElementById(this.id).style.borderColor = "blue;";if(isClicking){draw(this.id);}else if(isErasing){erase(this.id);}}, false);
+		btn.addEventListener("mouseout", function(){document.getElementById(this.id).style.borderColor = "grey;";}, false);
+		drawingboard.appendChild(btn);
+	} 
+} 
+
+function click(){
+	if(isClicking){
+		isClicking = false;
+	}else{
+		isClicking = true;
+	}
+}
+
+function backupCanvas(){
+	if(undoCanvas.length > 500){
+		undoCanvas.pop();
+	}
+	undoCanvas.unshift(JSON.parse(JSON.stringify(list))) 
+	//alert(undoCanvas.length);////////
+}
+
+function compareCanvas(lista, listb){
+//alert("comparing");
+	for (var i = 0; i < vertical; i++) {
+	  for (var j = 0; j < horizontal; j++) {
+			//alert(lista[i][j] + " | " + listb[i][j]);
+			if(lista[i][j] != listb[i][j]){
+				//alert("erasing");
+				erase(i + ":" + j);
+			}	
+		} 
+	} 
+}
+
+
+function refreshCanvas(){
+	ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+	for (var i = 0; i < vertical; i++) {
+	  for (var j = 0; j < horizontal; j++) {
+			if(list[i][j] != 0){
+				ctx.fillStyle = document.getElementById(i + ":" + j).value;
+				ctx.fillRect(j, i, 1, 1);
+				//console.log(j, i, j+1, i+1); 
+			}	
+		} 
+	} 
+}
+
+function refreshColorList(){
+	colorlist.forEach(function(color, idx){
+		document.getElementById("colorsquare" + idx).style.backgroundColor = color;
+	});
+}
+
+function addToColorList(color){
+	alreadyexists = false;
+	colorlist.forEach(function(e){
+		if(e == color){
+			alreadyexists = true;
+		}
+	});
+	if(!alreadyexists){
+		if(colorlist.length > colorlistsize-1){
+			colorlist.pop();
+		}
+		colorlist.unshift(color)
+	}
+	refreshColorList()
+}
+
+function draw(id){
+	backupCanvas()
+	var cords = id.split(":");
+	list[cords[0]][cords[1]] = "1";
+	var btn = document.getElementById(id);
+	btn.style = "box-shadow: inset 30px 0 0 0 " + selectedColor.rgbaString + ";";
+	btn.value = selectedColor.rgbaString;
+	addToColorList(selectedColor.rgbaString)
+	
+	
+	
+	refreshCanvas()
+}
+
+function erase(id){
+	var cords = id.split(":");
+	list[cords[0]][cords[1]] = "0";
+	var btn = document.getElementById(id);
+	btn.style = "background-color: white;";
+	btn.value = "";
+	
+	refreshCanvas()
+}
+
+function trasnparencyToggle(){
+	const square = document.querySelectorAll('.square');
+	if(transparency){
+		style = "none";
+		transparency = false;	
+	}else{
+		style = "linear-gradient(to right, rgba(192, 192, 192, 0.75), rgba(192, 192, 192, 0.75)),linear-gradient(to right, black 50%, white 50%),linear-gradient(to bottom, black 50%, white 50%)";
+		transparency = true;
+	}
+	square.forEach(element => {element.style.backgroundImage = style;});
+}
+</script>
